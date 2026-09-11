@@ -115,46 +115,26 @@ let selectedClip = 'jabCross'
 let playWhenReady = false
 let sequencePlayback = null
 let followedPosition = null
-const cameraFollowRatio = 0.9
-const maxCameraFollowStep = 0.012
-const maxPendingCameraMovement = 0.2
-const pendingCameraMovement = new THREE.Vector3()
-function getRootPositionTrack(action) {
-  return action?.getClip().tracks.find((track) => track.name.endsWith('.position') && /(hips|root)/i.test(track.name))
-}
+let activeMotionProgress = 0
+const rootMotionOffsets = new Map()
 
-function getRootBone(action) {
-  const track = getRootPositionTrack(action)
-  if (!track || !mixamoModel) return null
-  const rootName = track.name.slice(0, track.name.lastIndexOf('.'))
-  const normalizedRootName = rootName.replace(/[:_-]/g, '').toLowerCase()
-  let rootBone = mixamoModel.getObjectByName(rootName)
-  if (!rootBone) {
-    mixamoModel.traverse((child) => {
-      if (!rootBone && child.name.replace(/[:_-]/g, '').toLowerCase() === normalizedRootName) rootBone = child
-    })
+function prepareAnimationClip(clip, clipName) {
+  const rootTrack = clip.tracks.find((track) => track.name.endsWith('.position') && /(hips|root)/i.test(track.name))
+  if (rootTrack && rootTrack.values.length >= 6) {
+    const last = rootTrack.values.length - 3
+    rootMotionOffsets.set(clipName, new THREE.Vector3(
+      rootTrack.values[last] - rootTrack.values[0],
+      rootTrack.values[last + 1] - rootTrack.values[1],
+      rootTrack.values[last + 2] - rootTrack.values[2],
+    ).multiply(mixamoModel.scale))
+    clip.tracks = clip.tracks.filter((track) => track !== rootTrack)
   }
-  return rootBone
+  return clip
 }
 
-function carryRootMotionInto(action) {
-  const track = getRootPositionTrack(action)
-  if (!track || !mixamoModel) return
-  const rootBone = getRootBone(action)
-  if (!rootBone) return
-  const currentPosition = rootBone.position.clone()
-  const nextPosition = new THREE.Vector3(track.values[0], track.values[1], track.values[2])
-  mixamoModel.position.add(currentPosition.sub(nextPosition).multiply(mixamoModel.scale))
-}
-
-function getFollowPosition() {
-  if (!mixamoModel) return null
-  const rootBone = getRootBone(mixamoAction)
-  if (!rootBone) return mixamoModel.position.clone()
-  const worldPosition = new THREE.Vector3()
-  rootBone.getWorldPosition(worldPosition)
-  worldPosition.y = mixamoModel.position.y
-  return worldPosition
+function applyStepMotion(clipName, progressDelta) {
+  const offset = rootMotionOffsets.get(clipName)
+  if (mixamoModel && offset) mixamoModel.position.addScaledVector(offset, progressDelta)
 }
 
 function setTime(value, pauseAction = true) {
@@ -177,6 +157,7 @@ function useAnimation(clipName) {
   mixamoAction = nextAction
   selectedClip = clipName
   duration = mixamoAction.getClip().duration
+  activeMotionProgress = 0
   mixamoAction.reset()
   mixamoAction.enabled = true
   mixamoAction.setEffectiveWeight(1)
@@ -205,12 +186,13 @@ fbxLoader.load(characterUrl, (model) => {
   Promise.all(Object.entries(animationUrls).map(([name, url]) => new Promise((resolve) => {
     fbxLoader.load(url, (animationFile) => {
       const clip = animationFile.animations[0]
+      if (clip) prepareAnimationClip(clip, name)
       if (clip) mixamoActions.set(name, mixamoMixer.clipAction(clip))
       resolve()
     }, undefined, (error) => { console.error(`Unable to load ${name} animation`, error); resolve() })
   }))).then(() => {
     useAnimation(selectedClip)
-    followedPosition = getFollowPosition()
+    followedPosition = mixamoModel.position.clone()
     if (playWhenReady) {
       isPlaying = true
       updatePlayButton()
@@ -261,7 +243,7 @@ const originalPanelMarkup = document.querySelector('.sequence-panel').innerHTML
 function setupSequenceLibrary() { const addButton = document.querySelector('#addButton'); addButton?.addEventListener('click', () => { builderSteps = []; renderBuilder() }) }
 function startSequence(steps) {
   if (!steps.length || !mixamoActions.has(steps[0].clip)) return
-  sequencePlayback = { steps: steps.map((step) => ({ ...step })), index: 0, transitioned: false, nextAction: null }
+  sequencePlayback = { steps: steps.map((step) => ({ ...step })), index: 0, transitioned: false, nextAction: null, stepProgress: 0 }
   useAnimation(sequencePlayback.steps[0].clip)
   mixamoAction.paused = false
   isPlaying = true
@@ -274,8 +256,7 @@ document.querySelector('#speedButton').addEventListener('click', () => { speed =
 document.querySelector('#loopButton').addEventListener('click', (event) => { loop = !loop; event.currentTarget.classList.toggle('enabled', loop); event.currentTarget.setAttribute('aria-pressed', loop) })
 document.querySelector('#resetCamera').addEventListener('click', () => {
   const position = mixamoModel?.position ?? new THREE.Vector3()
-  pendingCameraMovement.set(0, 0, 0)
-  followedPosition?.copy(getFollowPosition() ?? position)
+  followedPosition?.copy(position)
   camera.position.set(5.8 + position.x, 3.1 + position.y, 8.8 + position.z)
   controls.target.set(position.x, 1.4 + position.y, position.z)
 })
@@ -295,6 +276,7 @@ function render(timestamp = performance.now()) {
           mixamoAction.play()
           mixamoAction.paused = false
         }
+        activeMotionProgress = 0
       }
       else { elapsed = duration; isPlaying = false; updatePlayButton() }
     }
@@ -306,7 +288,6 @@ function render(timestamp = performance.now()) {
       const nextDuration = nextAction?.getClip().duration ?? duration
       const overlap = Math.min(requestedOverlap, duration * 0.35, nextDuration * 0.35)
       if (!sequencePlayback.transitioned && nextAction && nextAction !== mixamoAction && sequencePlayback.index < sequencePlayback.steps.length - 1 && mixamoAction.time >= duration - overlap) {
-        carryRootMotionInto(nextAction)
         nextAction.reset()
         nextAction.enabled = true
         nextAction.setEffectiveWeight(1)
@@ -323,7 +304,7 @@ function render(timestamp = performance.now()) {
           if (loop) {
             sequencePlayback.index = 0
             sequencePlayback.transitioned = false
-            carryRootMotionInto(mixamoActions.get(sequencePlayback.steps[0].clip))
+            sequencePlayback.stepProgress = 0
             useAnimation(sequencePlayback.steps[0].clip)
             mixamoAction.paused = false
           } else {
@@ -335,37 +316,41 @@ function render(timestamp = performance.now()) {
           mixamoAction = sequencePlayback.nextAction || mixamoAction
           duration = mixamoAction.getClip().duration
           if (!sequencePlayback.nextAction) {
-            carryRootMotionInto(mixamoAction)
             mixamoAction.reset()
             mixamoAction.play()
             mixamoAction.paused = false
           }
           sequencePlayback.transitioned = false
           sequencePlayback.nextAction = null
+          sequencePlayback.stepProgress = 0
         }
       }
     }
+    const sequenceWasActive = Boolean(sequencePlayback)
     if (mixamoAction) {
       mixamoAction.paused = false
       const stepSpeed = sequencePlayback ? Number(sequencePlayback.steps[sequencePlayback.index].speed) || 1 : 1
       mixamoMixer.update(delta * speed * stepSpeed)
       elapsed = Math.min(mixamoAction.time, duration)
+      if (sequencePlayback) {
+        const progress = Math.min(mixamoAction.time / duration, 1)
+        applyStepMotion(sequencePlayback.steps[sequencePlayback.index].clip, progress - sequencePlayback.stepProgress)
+        sequencePlayback.stepProgress = progress
+      } else if (!sequenceWasActive) {
+        const progress = Math.min(mixamoAction.time / duration, 1)
+        applyStepMotion(selectedClip, progress - activeMotionProgress)
+        activeMotionProgress = progress
+      }
     }
     setTime(elapsed, false)
   }
   if (mixamoModel && followedPosition) {
-    const followPosition = getFollowPosition()
-    const movement = followPosition.sub(followedPosition)
+    const movement = mixamoModel.position.clone().sub(followedPosition)
     if (movement.lengthSq() > 0) {
-      pendingCameraMovement.add(movement.multiplyScalar(cameraFollowRatio))
-      pendingCameraMovement.clampLength(0, maxPendingCameraMovement)
-      followedPosition.copy(getFollowPosition())
+      camera.position.add(movement)
+      controls.target.add(movement)
+      followedPosition.copy(mixamoModel.position)
     }
-    const followStep = Math.min(1, delta * 3.5)
-    const cameraMovement = pendingCameraMovement.clone().multiplyScalar(followStep).clampLength(0, maxCameraFollowStep)
-    camera.position.add(cameraMovement)
-    controls.target.add(cameraMovement)
-    pendingCameraMovement.sub(cameraMovement)
   }
   controls.update()
   renderer.render(scene, camera)
