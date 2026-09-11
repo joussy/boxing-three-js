@@ -92,7 +92,7 @@ scene.add(keyLight)
 const rimLight = new THREE.PointLight('#b8d7d0', 8, 14)
 rimLight.position.set(4, 3, -4)
 scene.add(rimLight)
-const floor = new THREE.Mesh(new THREE.CircleGeometry(7, 64), new THREE.MeshStandardMaterial({ color: '#c8c0b5', roughness: 0.9 }))
+const floor = new THREE.Mesh(new THREE.CircleGeometry(30, 96), new THREE.MeshStandardMaterial({ color: '#c8c0b5', roughness: 0.9 }))
 floor.rotation.x = -Math.PI / 2
 floor.receiveShadow = true
 scene.add(floor)
@@ -100,7 +100,7 @@ const ring = new THREE.Mesh(new THREE.RingGeometry(2.35, 2.42, 64), new THREE.Me
 ring.rotation.x = -Math.PI / 2
 ring.position.y = 0.012
 scene.add(ring)
-const grid = new THREE.GridHelper(10, 20, '#9d988e', '#b4aea5')
+const grid = new THREE.GridHelper(40, 80, '#9d988e', '#b4aea5')
 grid.position.y = 0.016
 grid.material.transparent = true
 grid.material.opacity = 0.18
@@ -228,21 +228,38 @@ const moveOptions = [
   { name: 'Step forward', clip: 'stepForward', accent: 'blue' },
   { name: 'Step back', clip: 'stepBackward', accent: 'blue' },
 ]
-let builderSteps = []
+const combinationStorageKey = 'round-one-combination-draft-v1'
+function loadBuilderSteps() {
+  try {
+    const savedSteps = JSON.parse(localStorage.getItem(combinationStorageKey) || '[]')
+    if (!Array.isArray(savedSteps)) return []
+    return savedSteps.slice(0, 6).filter((step) => moveOptions.some((move) => move.clip === step.clip)).map((step) => ({
+      clip: step.clip,
+      overlap: Number(step.overlap) || 0,
+      speed: Number(step.speed) || 1,
+    }))
+  } catch {
+    return []
+  }
+}
+function persistBuilderSteps() {
+  localStorage.setItem(combinationStorageKey, JSON.stringify(builderSteps))
+}
+let builderSteps = loadBuilderSteps()
 function builderName() { return builderSteps.length ? builderSteps.map((step) => moveOptions.find((move) => move.clip === step.clip)?.name).join(' - ') : 'Untitled combination' }
 function renderBuilder() {
   const panel = document.querySelector('.sequence-panel')
   panel.innerHTML = `<div class="builder-head"><div><p class="eyebrow">NEW COMBINATION</p><h2>Build the round.</h2></div><button class="builder-close" id="closeBuilder" aria-label="Close builder">×</button></div><p class="builder-name">${builderName()}</p><div class="builder-steps">${builderSteps.length ? builderSteps.map((step, index) => `<div class="builder-step"><div class="step-top"><span class="step-number">0${index + 1}</span><select class="step-select" data-index="${index}" aria-label="Step ${index + 1}">${moveOptions.map((move) => `<option value="${move.clip}" ${move.clip === step.clip ? 'selected' : ''}>${move.name}</option>`).join('')}</select><button class="step-remove" data-index="${index}" aria-label="Remove step ${index + 1}">×</button></div><label class="overlap-label">OVERLAP <input class="overlap-slider" data-index="${index}" type="range" min="0" max="2" step="0.1" value="${step.overlap}" /><output>${Number(step.overlap).toFixed(1)}s</output></label><label class="speed-label">SPEED <input class="speed-slider" data-index="${index}" type="range" min="0.25" max="2" step="0.25" value="${step.speed}" /><output>${Number(step.speed).toFixed(2)}x</output></label></div>`).join('') : '<div class="empty-builder"><span>＋</span><p>Add a move to start building</p></div>'}</div><div class="builder-actions">${builderSteps.length < 6 ? '<button class="add-step" id="addStep">+ Add move</button>' : '<span class="step-limit">6 STEP LIMIT</span>'}<button class="builder-play" id="playBuilder" ${builderSteps.length ? '' : 'disabled'}>▶ Play combination</button></div><div class="builder-hint">Drag is not needed here: choose a move, set its overlap, and play the full sequence.</div>`
   panel.querySelector('#closeBuilder')?.addEventListener('click', () => { panel.innerHTML = originalPanelMarkup; setupSequenceLibrary() })
-  panel.querySelector('#addStep')?.addEventListener('click', () => { builderSteps.push({ clip: 'jab', overlap: 0.2, speed: 1 }); renderBuilder() })
-  panel.querySelectorAll('.step-select').forEach((select) => select.addEventListener('change', (event) => { builderSteps[Number(event.target.dataset.index)].clip = event.target.value; renderBuilder() }))
-  panel.querySelectorAll('.step-remove').forEach((button) => button.addEventListener('click', () => { builderSteps.splice(Number(button.dataset.index), 1); renderBuilder() }))
-  panel.querySelectorAll('.overlap-slider').forEach((slider) => slider.addEventListener('input', (event) => { builderSteps[Number(event.target.dataset.index)].overlap = Number(event.target.value); renderBuilder() }))
-  panel.querySelectorAll('.speed-slider').forEach((slider) => slider.addEventListener('input', (event) => { builderSteps[Number(event.target.dataset.index)].speed = Number(event.target.value); renderBuilder() }))
+  panel.querySelector('#addStep')?.addEventListener('click', () => { builderSteps.push({ clip: 'jab', overlap: 0, speed: 1 }); persistBuilderSteps(); renderBuilder() })
+  panel.querySelectorAll('.step-select').forEach((select) => select.addEventListener('change', (event) => { builderSteps[Number(event.target.dataset.index)].clip = event.target.value; persistBuilderSteps(); renderBuilder() }))
+  panel.querySelectorAll('.step-remove').forEach((button) => button.addEventListener('click', () => { builderSteps.splice(Number(button.dataset.index), 1); persistBuilderSteps(); renderBuilder() }))
+  panel.querySelectorAll('.overlap-slider').forEach((slider) => slider.addEventListener('input', (event) => { builderSteps[Number(event.target.dataset.index)].overlap = Number(event.target.value); persistBuilderSteps(); renderBuilder() }))
+  panel.querySelectorAll('.speed-slider').forEach((slider) => slider.addEventListener('input', (event) => { builderSteps[Number(event.target.dataset.index)].speed = Number(event.target.value); persistBuilderSteps(); renderBuilder() }))
   panel.querySelector('#playBuilder')?.addEventListener('click', () => startSequence(builderSteps))
 }
 const originalPanelMarkup = document.querySelector('.sequence-panel').innerHTML
-function setupSequenceLibrary() { const addButton = document.querySelector('#addButton'); addButton?.addEventListener('click', () => { builderSteps = []; renderBuilder() }) }
+function setupSequenceLibrary() { const addButton = document.querySelector('#addButton'); addButton?.addEventListener('click', () => { builderSteps = loadBuilderSteps(); renderBuilder() }) }
 function startSequence(steps) {
   if (!steps.length || !mixamoActions.has(steps[0].clip)) return
   sequencePlayback = { steps: steps.map((step) => ({ ...step })), index: 0, transitioned: false, nextAction: null, stepProgress: 0 }
@@ -329,7 +346,7 @@ function render(timestamp = performance.now()) {
       }
     }
     const sequenceWasActive = Boolean(sequencePlayback)
-    if (mixamoAction) {
+    if (mixamoAction && isPlaying) {
       mixamoAction.paused = false
       const stepSpeed = sequencePlayback ? Number(sequencePlayback.steps[sequencePlayback.index].speed) || 1 : 1
       mixamoMixer.update(delta * speed * stepSpeed)
