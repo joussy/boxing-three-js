@@ -117,8 +117,10 @@ let sequencePlayback = null
 let followedPosition = null
 let activeMotionProgress = 0
 const rootMotionOffsets = new Map()
+const footworkClips = new Set(['stepForward', 'stepBackward'])
 
 function prepareAnimationClip(clip, clipName) {
+  if (!footworkClips.has(clipName)) return clip
   const rootTrack = clip.tracks.find((track) => track.name.endsWith('.position') && /(hips|root)/i.test(track.name))
   if (rootTrack && rootTrack.values.length >= 6) {
     const last = rootTrack.values.length - 3
