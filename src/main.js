@@ -165,7 +165,13 @@ function prepareAnimationClip(clip, clipName) {
       rootTrack.values[last + 1] - rootTrack.values[1],
       rootTrack.values[last + 2] - rootTrack.values[2],
     ).multiply(mixamoModel.scale).multiplyScalar(1.5)) //movment speed (footwork)
-    clip.tracks = clip.tracks.filter((track) => track !== rootTrack)
+    // Freeze horizontal drift (handled externally via applyStepMotion) but keep the original Y curve so standing height matches every other clip.
+    const originX = rootTrack.values[0]
+    const originZ = rootTrack.values[2]
+    for (let i = 0; i < rootTrack.values.length; i += 3) {
+      rootTrack.values[i] = originX
+      rootTrack.values[i + 2] = originZ
+    }
   }
   return clip
 }
@@ -213,7 +219,7 @@ function useAnimation(clipName) {
 fbxLoader.load(characterUrl, (model) => {
   mixamoModel = model
   mixamoModel.scale.setScalar(0.01)
-  mixamoModel.position.y = 0.04
+  mixamoModel.position.y = 0
   followedPosition = mixamoModel.position.clone()
   mixamoModel.traverse((child) => {
     if (child.isMesh) {
