@@ -113,9 +113,10 @@ let loop = false
 let duration = 2.4
 let selectedClip = 'jabCross'
 let playWhenReady = false
-function setTime(value) {
+let sequencePlayback = null
+function setTime(value, pauseAction = true) {
   elapsed = Number(value)
-  if (mixamoAction) {
+  if (mixamoAction && pauseAction) {
     mixamoAction.paused = true
     mixamoAction.time = Math.min(elapsed, duration)
     mixamoMixer.update(0)
@@ -134,11 +135,14 @@ function useAnimation(clipName) {
   selectedClip = clipName
   duration = mixamoAction.getClip().duration
   mixamoAction.reset()
+  mixamoAction.enabled = true
+  mixamoAction.setEffectiveWeight(1)
   mixamoAction.setLoop(THREE.LoopOnce, 1)
   mixamoAction.clampWhenFinished = true
   mixamoAction.play()
   mixamoAction.paused = true
   setTime(0)
+  mixamoModel.visible = true
 }
 
 fbxLoader.load(characterUrl, (model) => {
@@ -151,6 +155,7 @@ fbxLoader.load(characterUrl, (model) => {
       child.receiveShadow = true
     }
   })
+  mixamoModel.visible = false
   scene.add(mixamoModel)
   mixamoMixer = new THREE.AnimationMixer(mixamoModel)
   Promise.all(Object.entries(animationUrls).map(([name, url]) => new Promise((resolve) => {
@@ -179,18 +184,51 @@ list.addEventListener('click', (event) => {
   document.querySelector('#comboTitle').textContent = combinations[index].name
   document.querySelector('.stage-meta span:last-child').textContent = `${String(index + 1).padStart(2, '0')} / ${String(combinations.length).padStart(2, '0')}`
   selectedClip = combinations[index].clip
+  sequencePlayback = null
   playWhenReady = true
   useAnimation(combinations[index].clip)
   isPlaying = true
   updatePlayButton()
 })
+const moveOptions = [
+  { name: 'Jab - Cross', clip: 'jabCross', accent: 'lime' },
+  { name: 'Jab', clip: 'jab', accent: 'lime' },
+  { name: 'Cross', clip: 'cross', accent: 'orange' },
+  { name: 'Lead hook', clip: 'leftHook', accent: 'orange' },
+  { name: 'Rear hook', clip: 'rightHook', accent: 'orange' },
+  { name: 'Step forward', clip: 'stepForward', accent: 'blue' },
+  { name: 'Step back', clip: 'stepBackward', accent: 'blue' },
+]
+let builderSteps = []
+function builderName() { return builderSteps.length ? builderSteps.map((step) => moveOptions.find((move) => move.clip === step.clip)?.name).join(' - ') : 'Untitled combination' }
+function renderBuilder() {
+  const panel = document.querySelector('.sequence-panel')
+  panel.innerHTML = `<div class="builder-head"><div><p class="eyebrow">NEW COMBINATION</p><h2>Build the round.</h2></div><button class="builder-close" id="closeBuilder" aria-label="Close builder">×</button></div><p class="builder-name">${builderName()}</p><div class="builder-steps">${builderSteps.length ? builderSteps.map((step, index) => `<div class="builder-step"><div class="step-top"><span class="step-number">0${index + 1}</span><select class="step-select" data-index="${index}" aria-label="Step ${index + 1}">${moveOptions.map((move) => `<option value="${move.clip}" ${move.clip === step.clip ? 'selected' : ''}>${move.name}</option>`).join('')}</select><button class="step-remove" data-index="${index}" aria-label="Remove step ${index + 1}">×</button></div><label class="overlap-label">OVERLAP <input class="overlap-slider" data-index="${index}" type="range" min="0" max="2" step="0.1" value="${step.overlap}" /><output>${Number(step.overlap).toFixed(1)}s</output></label><label class="speed-label">SPEED <input class="speed-slider" data-index="${index}" type="range" min="0.25" max="2" step="0.25" value="${step.speed}" /><output>${Number(step.speed).toFixed(2)}x</output></label></div>`).join('') : '<div class="empty-builder"><span>＋</span><p>Add a move to start building</p></div>'}</div><div class="builder-actions">${builderSteps.length < 6 ? '<button class="add-step" id="addStep">+ Add move</button>' : '<span class="step-limit">6 STEP LIMIT</span>'}<button class="builder-play" id="playBuilder" ${builderSteps.length ? '' : 'disabled'}>▶ Play combination</button></div><div class="builder-hint">Drag is not needed here: choose a move, set its overlap, and play the full sequence.</div>`
+  panel.querySelector('#closeBuilder')?.addEventListener('click', () => { panel.innerHTML = originalPanelMarkup; setupSequenceLibrary() })
+  panel.querySelector('#addStep')?.addEventListener('click', () => { builderSteps.push({ clip: 'jab', overlap: 0.2, speed: 1 }); renderBuilder() })
+  panel.querySelectorAll('.step-select').forEach((select) => select.addEventListener('change', (event) => { builderSteps[Number(event.target.dataset.index)].clip = event.target.value; renderBuilder() }))
+  panel.querySelectorAll('.step-remove').forEach((button) => button.addEventListener('click', () => { builderSteps.splice(Number(button.dataset.index), 1); renderBuilder() }))
+  panel.querySelectorAll('.overlap-slider').forEach((slider) => slider.addEventListener('input', (event) => { builderSteps[Number(event.target.dataset.index)].overlap = Number(event.target.value); renderBuilder() }))
+  panel.querySelectorAll('.speed-slider').forEach((slider) => slider.addEventListener('input', (event) => { builderSteps[Number(event.target.dataset.index)].speed = Number(event.target.value); renderBuilder() }))
+  panel.querySelector('#playBuilder')?.addEventListener('click', () => startSequence(builderSteps))
+}
+const originalPanelMarkup = document.querySelector('.sequence-panel').innerHTML
+function setupSequenceLibrary() { const addButton = document.querySelector('#addButton'); addButton?.addEventListener('click', () => { builderSteps = []; renderBuilder() }) }
+function startSequence(steps) {
+  if (!steps.length || !mixamoActions.has(steps[0].clip)) return
+  sequencePlayback = { steps: steps.map((step) => ({ ...step })), index: 0, transitioned: false, nextAction: null }
+  useAnimation(sequencePlayback.steps[0].clip)
+  mixamoAction.paused = false
+  isPlaying = true
+  updatePlayButton()
+}
 function updatePlayButton() { document.querySelector('#playButton').innerHTML = isPlaying ? '<span class="pause-bars">Ⅱ</span>' : '<span class="play-triangle">▶</span>' }
 document.querySelector('#playButton').addEventListener('click', () => { isPlaying = !isPlaying; updatePlayButton() })
 document.querySelector('#timeline').addEventListener('input', (event) => { isPlaying = false; updatePlayButton(); setTime(Number(event.target.value) * duration) })
 document.querySelector('#speedButton').addEventListener('click', () => { speed = speed === 1 ? 0.5 : speed === 0.5 ? 1.5 : 1; document.querySelector('#speedButton').textContent = `${speed}×` })
 document.querySelector('#loopButton').addEventListener('click', (event) => { loop = !loop; event.currentTarget.classList.toggle('enabled', loop); event.currentTarget.setAttribute('aria-pressed', loop) })
 document.querySelector('#resetCamera').addEventListener('click', () => { camera.position.set(5.8, 3.1, 8.8); controls.target.set(0, 1.4, 0) })
-document.querySelector('#addButton').addEventListener('click', (event) => { event.currentTarget.textContent = 'Combination editor coming next' })
+setupSequenceLibrary()
 
 let previousFrame = performance.now()
 function render(timestamp = performance.now()) {
@@ -198,7 +236,7 @@ function render(timestamp = performance.now()) {
   previousFrame = timestamp
   if (isPlaying) {
     elapsed += delta * speed
-    if (elapsed >= duration) {
+    if (elapsed >= duration && !sequencePlayback) {
       if (loop) {
         elapsed = 0
         if (mixamoAction) {
@@ -209,12 +247,57 @@ function render(timestamp = performance.now()) {
       }
       else { elapsed = duration; isPlaying = false; updatePlayButton() }
     }
+    if (mixamoAction && sequencePlayback) {
+      const currentStep = sequencePlayback.steps[sequencePlayback.index]
+      const requestedOverlap = Math.max(0, Number(currentStep.overlap) || 0)
+      const nextStep = sequencePlayback.steps[sequencePlayback.index + 1]
+      const nextAction = nextStep ? mixamoActions.get(nextStep.clip) : null
+      const nextDuration = nextAction?.getClip().duration ?? duration
+      const overlap = Math.min(requestedOverlap, duration * 0.35, nextDuration * 0.35)
+      if (!sequencePlayback.transitioned && nextAction && nextAction !== mixamoAction && sequencePlayback.index < sequencePlayback.steps.length - 1 && mixamoAction.time >= duration - overlap) {
+        nextAction.reset()
+        nextAction.enabled = true
+        nextAction.setEffectiveWeight(1)
+        nextAction.setLoop(THREE.LoopOnce, 1)
+        nextAction.clampWhenFinished = true
+        nextAction.play()
+        if (overlap > 0) mixamoAction.crossFadeTo(nextAction, overlap, false)
+        sequencePlayback.nextAction = nextAction
+        sequencePlayback.transitioned = true
+      }
+      if (mixamoAction.time >= duration) {
+        sequencePlayback.index += 1
+        if (sequencePlayback.index >= sequencePlayback.steps.length) {
+          if (loop) {
+            sequencePlayback.index = 0
+            sequencePlayback.transitioned = false
+            useAnimation(sequencePlayback.steps[0].clip)
+            mixamoAction.paused = false
+          } else {
+            sequencePlayback = null
+            isPlaying = false
+            updatePlayButton()
+          }
+        } else {
+          mixamoAction = sequencePlayback.nextAction || mixamoAction
+          duration = mixamoAction.getClip().duration
+          if (!sequencePlayback.nextAction) {
+            mixamoAction.reset()
+            mixamoAction.play()
+            mixamoAction.paused = false
+          }
+          sequencePlayback.transitioned = false
+          sequencePlayback.nextAction = null
+        }
+      }
+    }
     if (mixamoAction) {
       mixamoAction.paused = false
-      mixamoMixer.update(delta * speed)
+      const stepSpeed = sequencePlayback ? Number(sequencePlayback.steps[sequencePlayback.index].speed) || 1 : 1
+      mixamoMixer.update(delta * speed * stepSpeed)
       elapsed = Math.min(mixamoAction.time, duration)
     }
-    setTime(elapsed)
+    setTime(elapsed, false)
   }
   controls.update()
   renderer.render(scene, camera)
@@ -231,3 +314,4 @@ window.addEventListener('resize', resize)
 resize()
 setTime(0)
 render()
+
