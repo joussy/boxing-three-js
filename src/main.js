@@ -116,8 +116,44 @@ let playWhenReady = false
 let sequencePlayback = null
 let followedPosition = null
 let activeMotionProgress = 0
+let activeTrimStart = 0
+let activeTrimEnd = duration
 const rootMotionOffsets = new Map()
 const footworkClips = new Set(['stepForward', 'stepBackward'])
+
+const clipTrimStorageKey = 'round-one-clip-trims-v1'
+function loadClipTrims() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(clipTrimStorageKey) || '{}')
+    return saved && typeof saved === 'object' ? saved : {}
+  } catch {
+    return {}
+  }
+}
+const clipTrims = loadClipTrims()
+function persistClipTrims() {
+  localStorage.setItem(clipTrimStorageKey, JSON.stringify(clipTrims))
+}
+function getTrimFraction(clipName) {
+  const trim = clipTrims[clipName]
+  return { start: trim?.start ?? 0, end: trim?.end ?? 1 }
+}
+function getTrimSeconds(clipName) {
+  const full = mixamoActions.get(clipName)?.getClip().duration ?? 0
+  const fraction = getTrimFraction(clipName)
+  return { start: fraction.start * full, end: fraction.end * full, full }
+}
+function setClipTrim(clipName, start, end) {
+  clipTrims[clipName] = { start, end }
+  persistClipTrims()
+  if (clipName === selectedClip) {
+    const trim = getTrimSeconds(clipName)
+    activeTrimStart = trim.start
+    activeTrimEnd = trim.end
+    duration = Math.max(activeTrimEnd - activeTrimStart, 0.01)
+    setTime(Math.min(elapsed, duration))
+  }
+}
 
 function prepareAnimationClip(clip, clipName) {
   if (!footworkClips.has(clipName)) return clip
@@ -143,7 +179,7 @@ function setTime(value, pauseAction = true) {
   elapsed = Number(value)
   if (mixamoAction && pauseAction) {
     mixamoAction.paused = true
-    mixamoAction.time = Math.min(elapsed, duration)
+    mixamoAction.time = activeTrimStart + Math.min(elapsed, duration)
     mixamoMixer.update(0)
   }
   document.querySelector('#timeline').value = elapsed / duration
@@ -158,7 +194,10 @@ function useAnimation(clipName) {
   }
   mixamoAction = nextAction
   selectedClip = clipName
-  duration = mixamoAction.getClip().duration
+  const trim = getTrimSeconds(clipName)
+  activeTrimStart = trim.start
+  activeTrimEnd = trim.end
+  duration = Math.max(activeTrimEnd - activeTrimStart, 0.01)
   activeMotionProgress = 0
   mixamoAction.reset()
   mixamoAction.enabled = true
@@ -202,23 +241,73 @@ fbxLoader.load(characterUrl, (model) => {
   })
 }, undefined, (error) => console.error('Unable to load Mixamo character', error))
 
-const list = document.querySelector('#sequenceList')
-list.innerHTML = combinations.map((combo, index) => `<button class="sequence-item ${index === 0 ? 'active' : ''}" data-index="${index}"><span class="sequence-number">${String(index + 1).padStart(2, '0')}</span><span class="sequence-copy"><strong>${combo.name}</strong><small>${combo.note}</small></span><span class="sequence-accent ${combo.accent}"></span><span class="sequence-arrow">→</span></button>`).join('')
-list.addEventListener('click', (event) => {
-  const item = event.target.closest('.sequence-item')
-  if (!item) return
-  const index = Number(item.dataset.index)
-  document.querySelectorAll('.sequence-item').forEach((el) => el.classList.remove('active'))
-  item.classList.add('active')
-  document.querySelector('#comboTitle').textContent = combinations[index].name
-  document.querySelector('.stage-meta span:last-child').textContent = `${String(index + 1).padStart(2, '0')} / ${String(combinations.length).padStart(2, '0')}`
-  selectedClip = combinations[index].clip
-  sequencePlayback = null
-  playWhenReady = true
-  useAnimation(combinations[index].clip)
-  isPlaying = true
-  updatePlayButton()
-})
+function trimReadoutText(clipName) {
+  const trim = getTrimFraction(clipName)
+  return `${Math.round(trim.start * 100)}–${Math.round(trim.end * 100)}%`
+}
+function setupSequenceList() {
+  const list = document.querySelector('#sequenceList')
+  if (!list) return
+  list.innerHTML = combinations.map((combo, index) => {
+    const trim = getTrimFraction(combo.clip)
+    return `<div class="sequence-item ${index === 0 ? 'active' : ''}" data-index="${index}">
+    <button class="sequence-main" data-index="${index}">
+      <span class="sequence-number">${String(index + 1).padStart(2, '0')}</span>
+      <span class="sequence-copy"><strong>${combo.name}</strong><small>${combo.note}</small></span>
+      <span class="sequence-accent ${combo.accent}"></span>
+      <span class="sequence-arrow">→</span>
+    </button>
+    <div class="trim-control" data-clip="${combo.clip}">
+      <span class="trim-label">TRIM</span>
+      <div class="trim-track">
+        <div class="trim-fill" style="left:${trim.start * 100}%; right:${100 - trim.end * 100}%"></div>
+        <input type="range" class="trim-range trim-start" min="0" max="1" step="0.01" value="${trim.start}" data-clip="${combo.clip}" aria-label="${combo.name} trim start" />
+        <input type="range" class="trim-range trim-end" min="0" max="1" step="0.01" value="${trim.end}" data-clip="${combo.clip}" aria-label="${combo.name} trim end" />
+      </div>
+      <output class="trim-readout">${trimReadoutText(combo.clip)}</output>
+    </div>
+  </div>`
+  }).join('')
+  list.addEventListener('click', (event) => {
+    const trigger = event.target.closest('.sequence-main')
+    if (!trigger) return
+    const index = Number(trigger.dataset.index)
+    document.querySelectorAll('.sequence-item').forEach((el) => el.classList.remove('active'))
+    trigger.closest('.sequence-item').classList.add('active')
+    document.querySelector('#comboTitle').textContent = combinations[index].name
+    document.querySelector('.stage-meta span:last-child').textContent = `${String(index + 1).padStart(2, '0')} / ${String(combinations.length).padStart(2, '0')}`
+    selectedClip = combinations[index].clip
+    sequencePlayback = null
+    playWhenReady = true
+    useAnimation(combinations[index].clip)
+    isPlaying = true
+    updatePlayButton()
+  })
+  list.querySelectorAll('.trim-control').forEach((control) => {
+    const clipName = control.dataset.clip
+    const startInput = control.querySelector('.trim-start')
+    const endInput = control.querySelector('.trim-end')
+    const fill = control.querySelector('.trim-fill')
+    const readout = control.querySelector('.trim-readout')
+    const apply = (movedInput) => {
+      let start = Number(startInput.value)
+      let end = Number(endInput.value)
+      if (start > end - 0.02) {
+        if (movedInput === startInput) start = Math.max(0, end - 0.02)
+        else end = Math.min(1, start + 0.02)
+        startInput.value = start
+        endInput.value = end
+      }
+      fill.style.left = `${start * 100}%`
+      fill.style.right = `${100 - end * 100}%`
+      readout.textContent = `${Math.round(start * 100)}–${Math.round(end * 100)}%`
+      setClipTrim(clipName, start, end)
+    }
+    startInput.addEventListener('input', () => apply(startInput))
+    endInput.addEventListener('input', () => apply(endInput))
+  })
+}
+setupSequenceList()
 const moveOptions = [
   { name: 'Jab - Cross', clip: 'jabCross', accent: 'lime' },
   { name: 'Jab', clip: 'jab', accent: 'lime' },
@@ -250,7 +339,7 @@ function builderName() { return builderSteps.length ? builderSteps.map((step) =>
 function renderBuilder() {
   const panel = document.querySelector('.sequence-panel')
   panel.innerHTML = `<div class="builder-head"><div><p class="eyebrow">NEW COMBINATION</p><h2>Build the round.</h2></div><button class="builder-close" id="closeBuilder" aria-label="Close builder">×</button></div><p class="builder-name">${builderName()}</p><div class="builder-steps">${builderSteps.length ? builderSteps.map((step, index) => `<div class="builder-step"><div class="step-top"><span class="step-number">0${index + 1}</span><select class="step-select" data-index="${index}" aria-label="Step ${index + 1}">${moveOptions.map((move) => `<option value="${move.clip}" ${move.clip === step.clip ? 'selected' : ''}>${move.name}</option>`).join('')}</select><button class="step-remove" data-index="${index}" aria-label="Remove step ${index + 1}">×</button></div><label class="overlap-label">OVERLAP <input class="overlap-slider" data-index="${index}" type="range" min="0" max="2" step="0.1" value="${step.overlap}" /><output>${Number(step.overlap).toFixed(1)}s</output></label><label class="speed-label">SPEED <input class="speed-slider" data-index="${index}" type="range" min="0.25" max="2" step="0.25" value="${step.speed}" /><output>${Number(step.speed).toFixed(2)}x</output></label></div>`).join('') : '<div class="empty-builder"><span>＋</span><p>Add a move to start building</p></div>'}</div><div class="builder-actions">${builderSteps.length < 6 ? '<button class="add-step" id="addStep">+ Add move</button>' : '<span class="step-limit">6 STEP LIMIT</span>'}<button class="builder-play" id="playBuilder" ${builderSteps.length ? '' : 'disabled'}>▶ Play combination</button></div><div class="builder-hint">Drag is not needed here: choose a move, set its overlap, and play the full sequence.</div>`
-  panel.querySelector('#closeBuilder')?.addEventListener('click', () => { panel.innerHTML = originalPanelMarkup; setupSequenceLibrary() })
+  panel.querySelector('#closeBuilder')?.addEventListener('click', () => { panel.innerHTML = originalPanelMarkup; setupSequenceLibrary(); setupSequenceList() })
   panel.querySelector('#addStep')?.addEventListener('click', () => { builderSteps.push({ clip: 'jab', overlap: 0, speed: 1.5 }); persistBuilderSteps(); renderBuilder() })
   panel.querySelectorAll('.step-select').forEach((select) => select.addEventListener('change', (event) => { builderSteps[Number(event.target.dataset.index)].clip = event.target.value; persistBuilderSteps(); renderBuilder() }))
   panel.querySelectorAll('.step-remove').forEach((button) => button.addEventListener('click', () => { builderSteps.splice(Number(button.dataset.index), 1); persistBuilderSteps(); renderBuilder() }))
@@ -292,6 +381,7 @@ function render(timestamp = performance.now()) {
         elapsed = 0
         if (mixamoAction) {
           mixamoAction.reset()
+          mixamoAction.time = activeTrimStart
           mixamoAction.play()
           mixamoAction.paused = false
         }
@@ -304,20 +394,24 @@ function render(timestamp = performance.now()) {
       const requestedOverlap = Math.max(0, Number(currentStep.overlap) || 0)
       const nextStep = sequencePlayback.steps[sequencePlayback.index + 1]
       const nextAction = nextStep ? mixamoActions.get(nextStep.clip) : null
-      const nextDuration = nextAction?.getClip().duration ?? duration
+      const nextTrim = nextStep ? getTrimSeconds(nextStep.clip) : null
+      const nextDuration = nextTrim ? Math.max(nextTrim.end - nextTrim.start, 0.01) : duration
       const overlap = Math.min(requestedOverlap, duration * 0.35, nextDuration * 0.35)
-      if (!sequencePlayback.transitioned && nextAction && nextAction !== mixamoAction && sequencePlayback.index < sequencePlayback.steps.length - 1 && mixamoAction.time >= duration - overlap) {
+      if (!sequencePlayback.transitioned && nextAction && nextAction !== mixamoAction && sequencePlayback.index < sequencePlayback.steps.length - 1 && mixamoAction.time >= activeTrimEnd - overlap) {
         nextAction.reset()
+        nextAction.time = nextTrim.start
         nextAction.enabled = true
         nextAction.setEffectiveWeight(1)
         nextAction.setLoop(THREE.LoopOnce, 1)
         nextAction.clampWhenFinished = true
         nextAction.play()
         if (overlap > 0) mixamoAction.crossFadeTo(nextAction, overlap, false)
+        else mixamoAction.enabled = false
         sequencePlayback.nextAction = nextAction
+        sequencePlayback.nextTrim = nextTrim
         sequencePlayback.transitioned = true
       }
-      if (mixamoAction.time >= duration) {
+      if (mixamoAction.time >= activeTrimEnd) {
         sequencePlayback.index += 1
         if (sequencePlayback.index >= sequencePlayback.steps.length) {
           if (loop) {
@@ -333,14 +427,19 @@ function render(timestamp = performance.now()) {
           }
         } else {
           mixamoAction = sequencePlayback.nextAction || mixamoAction
-          duration = mixamoAction.getClip().duration
+          const trim = sequencePlayback.nextTrim || getTrimSeconds(sequencePlayback.steps[sequencePlayback.index].clip)
+          activeTrimStart = trim.start
+          activeTrimEnd = trim.end
+          duration = Math.max(activeTrimEnd - activeTrimStart, 0.01)
           if (!sequencePlayback.nextAction) {
             mixamoAction.reset()
+            mixamoAction.time = activeTrimStart
             mixamoAction.play()
             mixamoAction.paused = false
           }
           sequencePlayback.transitioned = false
           sequencePlayback.nextAction = null
+          sequencePlayback.nextTrim = null
           sequencePlayback.stepProgress = 0
         }
       }
@@ -350,13 +449,14 @@ function render(timestamp = performance.now()) {
       mixamoAction.paused = false
       const stepSpeed = sequencePlayback ? Number(sequencePlayback.steps[sequencePlayback.index].speed) || 1 : 1
       mixamoMixer.update(delta * speed * stepSpeed)
-      elapsed = Math.min(mixamoAction.time, duration)
+      if (mixamoAction.time > activeTrimEnd) mixamoAction.time = activeTrimEnd
+      elapsed = Math.min(mixamoAction.time - activeTrimStart, duration)
       if (sequencePlayback) {
-        const progress = Math.min(mixamoAction.time / duration, 1)
+        const progress = Math.min(elapsed / duration, 1)
         applyStepMotion(sequencePlayback.steps[sequencePlayback.index].clip, progress - sequencePlayback.stepProgress)
         sequencePlayback.stepProgress = progress
       } else if (!sequenceWasActive) {
-        const progress = Math.min(mixamoAction.time / duration, 1)
+        const progress = Math.min(elapsed / duration, 1)
         applyStepMotion(selectedClip, progress - activeMotionProgress)
         activeMotionProgress = progress
       }
