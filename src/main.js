@@ -10,6 +10,10 @@ const animationUrls = {
   jabCross: '/assets/boxing/jab_cross.fbx',
   leftHook: '/assets/boxing/left_hook.fbx',
   rightHook: '/assets/boxing/right_hook.fbx',
+  leftUppercut: '/assets/boxing/lead_uppercut.fbx',
+  rightUppercut: '/assets/boxing/rear_uppercut.fbx',
+  leftPivot: '/assets/boxing/left_pivot.fbx',
+  rightPivot: '/assets/boxing/right_pivot.fbx',
   stepForward: '/assets/boxing/short_step_forward.fbx',
   stepBackward: '/assets/boxing/short_step_backward.fbx',
 }
@@ -19,6 +23,10 @@ const combinations = [
   { name: 'Jab', note: 'Lead straight', accent: 'lime', clip: 'jab' },
   { name: 'Cross', note: 'Rear straight', accent: 'orange', clip: 'cross' },
   { name: 'Lead hook', note: 'Finish upstairs', accent: 'orange', clip: 'leftHook' },
+  { name: 'Lead uppercut', note: 'Close range rise', accent: 'lime', clip: 'leftUppercut' },
+  { name: 'Rear uppercut', note: 'Body to head', accent: 'orange', clip: 'rightUppercut' },
+  { name: 'Lead pivot', note: 'Reset your angle', accent: 'blue', clip: 'leftPivot' },
+  { name: 'Rear pivot', note: 'Circle off the cage', accent: 'blue', clip: 'rightPivot' },
   { name: 'Step forward', note: 'Close the distance', accent: 'blue', clip: 'stepForward' },
   { name: 'Step back', note: 'Exit on balance', accent: 'blue', clip: 'stepBackward' },
 ]
@@ -33,7 +41,7 @@ document.querySelector('#app').innerHTML = `
     <section class="stage-panel">
       <div class="stage-heading">
         <div><p class="eyebrow">COMBINATION VISUALIZER</p><h1 id="comboTitle">Jab - Cross</h1></div>
-        <div class="stage-meta"><span class="status-pill"><i></i> READY</span><span>01 / 06</span></div>
+        <div class="stage-meta"><span class="status-pill"><i></i> READY</span><span>01 / ${String(combinations.length).padStart(2, '0')}</span></div>
       </div>
       <div class="stage-wrap" id="stageWrap">
         <div class="stage-overlay top-left"><span class="overlay-label">STANCE</span><strong>ORTHODOX</strong></div>
@@ -320,6 +328,10 @@ const moveOptions = [
   { name: 'Cross', clip: 'cross', accent: 'orange' },
   { name: 'Lead hook', clip: 'leftHook', accent: 'orange' },
   { name: 'Rear hook', clip: 'rightHook', accent: 'orange' },
+  { name: 'Lead uppercut', clip: 'leftUppercut', accent: 'lime' },
+  { name: 'Rear uppercut', clip: 'rightUppercut', accent: 'orange' },
+  { name: 'Lead pivot', clip: 'leftPivot', accent: 'blue' },
+  { name: 'Rear pivot', clip: 'rightPivot', accent: 'blue' },
   { name: 'Step forward', clip: 'stepForward', accent: 'blue' },
   { name: 'Step back', clip: 'stepBackward', accent: 'blue' },
 ]
@@ -331,7 +343,6 @@ function loadBuilderSteps() {
     return savedSteps.slice(0, 6).filter((step) => moveOptions.some((move) => move.clip === step.clip)).map((step) => ({
       clip: step.clip,
       overlap: Number(step.overlap) || 0,
-      speed: Number(step.speed) || 1.5,
     }))
   } catch {
     return []
@@ -344,20 +355,19 @@ let builderSteps = loadBuilderSteps()
 function builderName() { return builderSteps.length ? builderSteps.map((step) => moveOptions.find((move) => move.clip === step.clip)?.name).join(' - ') : 'Untitled combination' }
 function renderBuilder() {
   const panel = document.querySelector('.sequence-panel')
-  panel.innerHTML = `<div class="builder-head"><div><p class="eyebrow">NEW COMBINATION</p><h2>Build the round.</h2></div><button class="builder-close" id="closeBuilder" aria-label="Close builder">×</button></div><p class="builder-name">${builderName()}</p><div class="builder-steps">${builderSteps.length ? builderSteps.map((step, index) => `<div class="builder-step"><div class="step-top"><span class="step-number">0${index + 1}</span><select class="step-select" data-index="${index}" aria-label="Step ${index + 1}">${moveOptions.map((move) => `<option value="${move.clip}" ${move.clip === step.clip ? 'selected' : ''}>${move.name}</option>`).join('')}</select><button class="step-remove" data-index="${index}" aria-label="Remove step ${index + 1}">×</button></div><label class="overlap-label">OVERLAP <input class="overlap-slider" data-index="${index}" type="range" min="0" max="2" step="0.1" value="${step.overlap}" /><output>${Number(step.overlap).toFixed(1)}s</output></label><label class="speed-label">SPEED <input class="speed-slider" data-index="${index}" type="range" min="0.25" max="2" step="0.25" value="${step.speed}" /><output>${Number(step.speed).toFixed(2)}x</output></label></div>`).join('') : '<div class="empty-builder"><span>＋</span><p>Add a move to start building</p></div>'}</div><div class="builder-actions">${builderSteps.length < 6 ? '<button class="add-step" id="addStep">+ Add move</button>' : '<span class="step-limit">6 STEP LIMIT</span>'}<button class="builder-play" id="playBuilder" ${builderSteps.length ? '' : 'disabled'}>▶ Play combination</button></div><div class="builder-hint">Drag is not needed here: choose a move, set its overlap, and play the full sequence.</div>`
+  panel.innerHTML = `<div class="builder-head"><div><p class="eyebrow">NEW COMBINATION</p><h2>Build the round.</h2></div><button class="builder-close" id="closeBuilder" aria-label="Close builder">×</button></div><p class="builder-name">${builderName()}</p><div class="builder-steps">${builderSteps.length ? builderSteps.map((step, index) => `<div class="builder-step"><div class="step-top"><span class="step-number">0${index + 1}</span><select class="step-select" data-index="${index}" aria-label="Step ${index + 1}">${moveOptions.map((move) => `<option value="${move.clip}" ${move.clip === step.clip ? 'selected' : ''}>${move.name}</option>`).join('')}</select><button class="step-remove" data-index="${index}" aria-label="Remove step ${index + 1}">×</button></div><label class="overlap-label">OVERLAP <input class="overlap-slider" data-index="${index}" type="range" min="0" max="2" step="0.1" value="${step.overlap}" /><output>${Number(step.overlap).toFixed(1)}s</output></label></div>`).join('') : '<div class="empty-builder"><span>＋</span><p>Add a move to start building</p></div>'}</div><div class="builder-actions">${builderSteps.length < 6 ? '<button class="add-step" id="addStep">+ Add move</button>' : '<span class="step-limit">6 STEP LIMIT</span>'}<button class="builder-play" id="playBuilder" ${builderSteps.length ? '' : 'disabled'}>▶ Play combination</button></div><div class="builder-hint">Drag is not needed here: choose a move, set its overlap, and play the full sequence.</div>`
   panel.querySelector('#closeBuilder')?.addEventListener('click', () => { panel.innerHTML = originalPanelMarkup; setupSequenceLibrary(); setupSequenceList() })
-  panel.querySelector('#addStep')?.addEventListener('click', () => { builderSteps.push({ clip: 'jab', overlap: 0, speed: 1.5 }); persistBuilderSteps(); renderBuilder() })
+  panel.querySelector('#addStep')?.addEventListener('click', () => { builderSteps.push({ clip: 'jab', overlap: 0 }); persistBuilderSteps(); renderBuilder() })
   panel.querySelectorAll('.step-select').forEach((select) => select.addEventListener('change', (event) => { builderSteps[Number(event.target.dataset.index)].clip = event.target.value; persistBuilderSteps(); renderBuilder() }))
   panel.querySelectorAll('.step-remove').forEach((button) => button.addEventListener('click', () => { builderSteps.splice(Number(button.dataset.index), 1); persistBuilderSteps(); renderBuilder() }))
   panel.querySelectorAll('.overlap-slider').forEach((slider) => slider.addEventListener('input', (event) => { builderSteps[Number(event.target.dataset.index)].overlap = Number(event.target.value); persistBuilderSteps(); renderBuilder() }))
-  panel.querySelectorAll('.speed-slider').forEach((slider) => slider.addEventListener('input', (event) => { builderSteps[Number(event.target.dataset.index)].speed = Number(event.target.value); persistBuilderSteps(); renderBuilder() }))
   panel.querySelector('#playBuilder')?.addEventListener('click', () => startSequence(builderSteps))
 }
 const originalPanelMarkup = document.querySelector('.sequence-panel').innerHTML
 function setupSequenceLibrary() { const addButton = document.querySelector('#addButton'); addButton?.addEventListener('click', () => { builderSteps = loadBuilderSteps(); renderBuilder() }) }
 function startSequence(steps) {
   if (!steps.length || !mixamoActions.has(steps[0].clip)) return
-  sequencePlayback = { steps: steps.map((step) => ({ ...step })), index: 0, transitioned: false, nextAction: null, stepProgress: 0 }
+  sequencePlayback = { steps: steps.map((step) => ({ ...step })), index: 0, transitioned: false, nextAction: null, stepProgress: 0, blend: null }
   useAnimation(sequencePlayback.steps[0].clip)
   mixamoAction.paused = false
   isPlaying = true
@@ -407,11 +417,11 @@ function render(timestamp = performance.now()) {
         nextAction.reset()
         nextAction.time = nextTrim.start
         nextAction.enabled = true
-        nextAction.setEffectiveWeight(1)
+        nextAction.setEffectiveWeight(overlap > 0 ? 0 : 1)
         nextAction.setLoop(THREE.LoopOnce, 1)
         nextAction.clampWhenFinished = true
         nextAction.play()
-        if (overlap > 0) mixamoAction.crossFadeTo(nextAction, overlap, false)
+        if (overlap > 0) sequencePlayback.blend = { from: mixamoAction, to: nextAction, duration: overlap, elapsed: 0 }
         else mixamoAction.enabled = false
         sequencePlayback.nextAction = nextAction
         sequencePlayback.nextTrim = nextTrim
@@ -419,6 +429,11 @@ function render(timestamp = performance.now()) {
       }
       if (mixamoAction.time >= activeTrimEnd) {
         sequencePlayback.index += 1
+        if (sequencePlayback.blend) {
+          sequencePlayback.blend.from.enabled = false
+          sequencePlayback.blend.to.setEffectiveWeight(1)
+          sequencePlayback.blend = null
+        }
         if (sequencePlayback.index >= sequencePlayback.steps.length) {
           if (loop) {
             sequencePlayback.index = 0
@@ -453,10 +468,22 @@ function render(timestamp = performance.now()) {
     const sequenceWasActive = Boolean(sequencePlayback)
     if (mixamoAction && isPlaying) {
       mixamoAction.paused = false
-      const stepSpeed = sequencePlayback ? Number(sequencePlayback.steps[sequencePlayback.index].speed) || 1 : 1
+      const stepSpeed = 1
       mixamoMixer.update(delta * speed * stepSpeed)
       if (mixamoAction.time > activeTrimEnd) mixamoAction.time = activeTrimEnd
       elapsed = Math.min(mixamoAction.time - activeTrimStart, duration)
+      if (sequencePlayback?.blend) {
+        const blend = sequencePlayback.blend
+        blend.elapsed += delta * speed * stepSpeed
+        const t = Math.min(blend.elapsed / blend.duration, 1)
+        const eased = t * t * (3 - 2 * t)
+        blend.from.setEffectiveWeight(1 - eased)
+        blend.to.setEffectiveWeight(eased)
+        if (t >= 1) {
+          blend.from.enabled = false
+          sequencePlayback.blend = null
+        }
+      }
       if (sequencePlayback) {
         const progress = Math.min(elapsed / duration, 1)
         applyStepMotion(sequencePlayback.steps[sequencePlayback.index].clip, progress - sequencePlayback.stepProgress)
