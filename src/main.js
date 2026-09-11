@@ -46,7 +46,7 @@ document.querySelector('#app').innerHTML = `
         <button class="play-button" id="playButton" aria-label="Play combination"><span class="play-triangle">▶</span></button>
         <span class="time-readout" id="timeReadout">00:00.00</span>
         <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="Combination timeline" />
-        <button class="speed-button" id="speedButton">1×</button>
+        <button class="speed-button" id="speedButton">1.5×</button>
         <button class="ghost-button" id="loopButton" aria-pressed="false">LOOP <span class="toggle"></span></button>
       </div>
     </section>
@@ -108,7 +108,7 @@ scene.add(grid)
 
 let isPlaying = false
 let elapsed = 0
-let speed = 1
+let speed = 1.5
 let loop = false
 let duration = 2.4
 let selectedClip = 'jabCross'
@@ -236,7 +236,7 @@ function loadBuilderSteps() {
     return savedSteps.slice(0, 6).filter((step) => moveOptions.some((move) => move.clip === step.clip)).map((step) => ({
       clip: step.clip,
       overlap: Number(step.overlap) || 0,
-      speed: Number(step.speed) || 1,
+      speed: Number(step.speed) || 1.5,
     }))
   } catch {
     return []
@@ -251,7 +251,7 @@ function renderBuilder() {
   const panel = document.querySelector('.sequence-panel')
   panel.innerHTML = `<div class="builder-head"><div><p class="eyebrow">NEW COMBINATION</p><h2>Build the round.</h2></div><button class="builder-close" id="closeBuilder" aria-label="Close builder">×</button></div><p class="builder-name">${builderName()}</p><div class="builder-steps">${builderSteps.length ? builderSteps.map((step, index) => `<div class="builder-step"><div class="step-top"><span class="step-number">0${index + 1}</span><select class="step-select" data-index="${index}" aria-label="Step ${index + 1}">${moveOptions.map((move) => `<option value="${move.clip}" ${move.clip === step.clip ? 'selected' : ''}>${move.name}</option>`).join('')}</select><button class="step-remove" data-index="${index}" aria-label="Remove step ${index + 1}">×</button></div><label class="overlap-label">OVERLAP <input class="overlap-slider" data-index="${index}" type="range" min="0" max="2" step="0.1" value="${step.overlap}" /><output>${Number(step.overlap).toFixed(1)}s</output></label><label class="speed-label">SPEED <input class="speed-slider" data-index="${index}" type="range" min="0.25" max="2" step="0.25" value="${step.speed}" /><output>${Number(step.speed).toFixed(2)}x</output></label></div>`).join('') : '<div class="empty-builder"><span>＋</span><p>Add a move to start building</p></div>'}</div><div class="builder-actions">${builderSteps.length < 6 ? '<button class="add-step" id="addStep">+ Add move</button>' : '<span class="step-limit">6 STEP LIMIT</span>'}<button class="builder-play" id="playBuilder" ${builderSteps.length ? '' : 'disabled'}>▶ Play combination</button></div><div class="builder-hint">Drag is not needed here: choose a move, set its overlap, and play the full sequence.</div>`
   panel.querySelector('#closeBuilder')?.addEventListener('click', () => { panel.innerHTML = originalPanelMarkup; setupSequenceLibrary() })
-  panel.querySelector('#addStep')?.addEventListener('click', () => { builderSteps.push({ clip: 'jab', overlap: 0, speed: 1 }); persistBuilderSteps(); renderBuilder() })
+  panel.querySelector('#addStep')?.addEventListener('click', () => { builderSteps.push({ clip: 'jab', overlap: 0, speed: 1.5 }); persistBuilderSteps(); renderBuilder() })
   panel.querySelectorAll('.step-select').forEach((select) => select.addEventListener('change', (event) => { builderSteps[Number(event.target.dataset.index)].clip = event.target.value; persistBuilderSteps(); renderBuilder() }))
   panel.querySelectorAll('.step-remove').forEach((button) => button.addEventListener('click', () => { builderSteps.splice(Number(button.dataset.index), 1); persistBuilderSteps(); renderBuilder() }))
   panel.querySelectorAll('.overlap-slider').forEach((slider) => slider.addEventListener('input', (event) => { builderSteps[Number(event.target.dataset.index)].overlap = Number(event.target.value); persistBuilderSteps(); renderBuilder() }))
