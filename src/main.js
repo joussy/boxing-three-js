@@ -2,6 +2,7 @@ import './style.css'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
+import GIF from 'gif.js'
 
 const characterUrl = '/assets/boxing/character.fbx'
 const animationUrls = {
@@ -56,6 +57,7 @@ document.querySelector('#app').innerHTML = `
         <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="Combination timeline" />
         <button class="speed-button" id="speedButton">1.5×</button>
         <button class="ghost-button" id="loopButton" aria-pressed="false">LOOP <span class="toggle"></span></button>
+        <button class="ghost-button" id="exportGifButton">EXPORT GIF</button>
       </div>
     </section>
     <aside class="sequence-panel">
@@ -356,7 +358,7 @@ function loadBuilderSteps() {
   try {
     const savedSteps = JSON.parse(localStorage.getItem(combinationStorageKey) || '[]')
     if (!Array.isArray(savedSteps)) return []
-    return savedSteps.slice(0, 6).filter((step) => moveOptions.some((move) => move.clip === step.clip)).map((step) => ({
+    return savedSteps.filter((step) => moveOptions.some((move) => move.clip === step.clip)).map((step) => ({
       clip: step.clip,
       overlap: Number(step.overlap) || 0,
     }))
@@ -371,7 +373,7 @@ let builderSteps = loadBuilderSteps()
 function builderName() { return builderSteps.length ? builderSteps.map((step) => moveOptions.find((move) => move.clip === step.clip)?.name).join(' - ') : 'Untitled combination' }
 function renderBuilder() {
   const panel = document.querySelector('.sequence-panel')
-  panel.innerHTML = `<div class="builder-head"><div><p class="eyebrow">NEW COMBINATION</p><h2>Build the round.</h2></div><button class="builder-close" id="closeBuilder" aria-label="Close builder">×</button></div><p class="builder-name">${builderName()}</p><div class="builder-steps">${builderSteps.length ? builderSteps.map((step, index) => `<div class="builder-step"><div class="step-top"><span class="step-number">0${index + 1}</span><select class="step-select" data-index="${index}" aria-label="Step ${index + 1}">${moveOptions.map((move) => `<option value="${move.clip}" ${move.clip === step.clip ? 'selected' : ''}>${move.name}</option>`).join('')}</select><button class="step-remove" data-index="${index}" aria-label="Remove step ${index + 1}">×</button></div><label class="overlap-label">OVERLAP <input class="overlap-slider" data-index="${index}" type="range" min="0" max="2" step="0.1" value="${step.overlap}" /><output>${Number(step.overlap).toFixed(1)}s</output></label></div>`).join('') : '<div class="empty-builder"><span>＋</span><p>Add a move to start building</p></div>'}</div><div class="builder-actions">${builderSteps.length < 6 ? '<button class="add-step" id="addStep">+ Add move</button>' : '<span class="step-limit">6 STEP LIMIT</span>'}<button class="builder-play" id="playBuilder" ${builderSteps.length ? '' : 'disabled'}>▶ Play combination</button></div><div class="builder-hint">Drag is not needed here: choose a move, set its overlap, and play the full sequence.</div>`
+  panel.innerHTML = `<div class="builder-head"><div><p class="eyebrow">NEW COMBINATION</p><h2>Build the round.</h2></div><button class="builder-close" id="closeBuilder" aria-label="Close builder">×</button></div><p class="builder-name">${builderName()}</p><div class="builder-steps">${builderSteps.length ? builderSteps.map((step, index) => `<div class="builder-step"><div class="step-top"><span class="step-number">0${index + 1}</span><select class="step-select" data-index="${index}" aria-label="Step ${index + 1}">${moveOptions.map((move) => `<option value="${move.clip}" ${move.clip === step.clip ? 'selected' : ''}>${move.name}</option>`).join('')}</select><button class="step-remove" data-index="${index}" aria-label="Remove step ${index + 1}">×</button></div><label class="overlap-label">OVERLAP <input class="overlap-slider" data-index="${index}" type="range" min="0" max="2" step="0.1" value="${step.overlap}" /><output>${Number(step.overlap).toFixed(1)}s</output></label></div>`).join('') : '<div class="empty-builder"><span>＋</span><p>Add a move to start building</p></div>'}</div><div class="builder-actions"><button class="add-step" id="addStep">+ Add move</button><button class="builder-play" id="playBuilder" ${builderSteps.length ? '' : 'disabled'}>▶ Play combination</button></div><div class="builder-hint">Drag is not needed here: choose a move, set its overlap, and play the full sequence.</div>`
   panel.querySelector('#closeBuilder')?.addEventListener('click', () => { panel.innerHTML = originalPanelMarkup; setupSequenceLibrary(); setupSequenceList() })
   panel.querySelector('#addStep')?.addEventListener('click', () => { builderSteps.push({ clip: 'jab', overlap: 0 }); persistBuilderSteps(); renderBuilder() })
   panel.querySelectorAll('.step-select').forEach((select) => select.addEventListener('change', (event) => { builderSteps[Number(event.target.dataset.index)].clip = event.target.value; persistBuilderSteps(); renderBuilder() }))
@@ -390,11 +392,47 @@ function startSequence(steps) {
   isPlaying = true
   updatePlayButton()
 }
+let gifExport = null
+function exportCombinationAsGif() {
+  if (gifExport || !builderSteps.length || !mixamoActions.has(builderSteps[0].clip)) return
+  const exportButton = document.querySelector('#exportGifButton')
+  exportButton.disabled = true
+  exportButton.textContent = 'RECORDING…'
+  gifExport = {
+    gif: new GIF({ workers: 2, quality: 10, workerScript: '/gif.worker.js', width: renderer.domElement.width, height: renderer.domElement.height }),
+    frameIntervalMs: 1000 / 30,
+    lastCapture: -Infinity,
+    wasLoop: loop,
+  }
+  loop = false
+  startSequence(builderSteps)
+}
+function finishGifExport() {
+  const exportButton = document.querySelector('#exportGifButton')
+  const { gif, wasLoop } = gifExport
+  loop = wasLoop
+  exportButton.textContent = 'ENCODING…'
+  let downloaded = false
+  gif.on('finished', (blob) => {
+    if (downloaded) return
+    downloaded = true
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `${builderName().toLowerCase().replace(/[^a-z0-9]+/g, '-')}.gif`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    gifExport = null
+    exportButton.disabled = false
+    exportButton.textContent = 'EXPORT GIF'
+  })
+  gif.render()
+}
 function updatePlayButton() { document.querySelector('#playButton').innerHTML = isPlaying ? '<span class="pause-bars">Ⅱ</span>' : '<span class="play-triangle">▶</span>' }
 document.querySelector('#playButton').addEventListener('click', () => { isPlaying = !isPlaying; updatePlayButton() })
 document.querySelector('#timeline').addEventListener('input', (event) => { isPlaying = false; updatePlayButton(); setTime(Number(event.target.value) * duration) })
 document.querySelector('#speedButton').addEventListener('click', () => { speed = speed === 1 ? 0.5 : speed === 0.5 ? 1.5 : 1; document.querySelector('#speedButton').textContent = `${speed}×` })
 document.querySelector('#loopButton').addEventListener('click', (event) => { loop = !loop; event.currentTarget.classList.toggle('enabled', loop); event.currentTarget.setAttribute('aria-pressed', loop) })
+document.querySelector('#exportGifButton').addEventListener('click', () => exportCombinationAsGif())
 document.querySelector('#resetCamera').addEventListener('click', () => {
   const position = mixamoModel?.position ?? new THREE.Vector3()
   followedPosition?.copy(position)
@@ -525,6 +563,16 @@ function render(timestamp = performance.now()) {
   }
   controls.update()
   renderer.render(scene, camera)
+  if (gifExport) {
+    if (timestamp - gifExport.lastCapture >= gifExport.frameIntervalMs) {
+      gifExport.gif.addFrame(renderer.domElement, { copy: true, delay: gifExport.frameIntervalMs })
+      gifExport.lastCapture = timestamp
+    }
+    if (!gifExport.finishing && !sequencePlayback && !isPlaying) {
+      gifExport.finishing = true
+      finishGifExport()
+    }
+  }
   requestAnimationFrame(render)
 }
 function resize() {
