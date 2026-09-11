@@ -127,7 +127,9 @@ let activeMotionProgress = 0
 let activeTrimStart = 0
 let activeTrimEnd = duration
 const rootMotionOffsets = new Map()
-const footworkClips = new Set(['stepForward', 'stepBackward'])
+const rootRotationOffsets = new Map()
+const rootMotionClips = new Set(['stepForward', 'stepBackward', 'leftPivot', 'rightPivot'])
+const upAxis = new THREE.Vector3(0, 1, 0)
 
 const clipTrimStorageKey = 'round-one-clip-trims-v1'
 function loadClipTrims() {
@@ -164,7 +166,7 @@ function setClipTrim(clipName, start, end) {
 }
 
 function prepareAnimationClip(clip, clipName) {
-  if (!footworkClips.has(clipName)) return clip
+  if (!rootMotionClips.has(clipName)) return clip
   const rootTrack = clip.tracks.find((track) => track.name.endsWith('.position') && /(hips|root)/i.test(track.name))
   if (rootTrack && rootTrack.values.length >= 6) {
     const last = rootTrack.values.length - 3
@@ -181,12 +183,25 @@ function prepareAnimationClip(clip, clipName) {
       rootTrack.values[i + 2] = originZ
     }
   }
+  const rotationTrack = clip.tracks.find((track) => track.name.endsWith('.quaternion') && /(hips|root)/i.test(track.name))
+  if (rotationTrack && rotationTrack.values.length >= 8) {
+    const lastQ = rotationTrack.values.length - 4
+    const startYaw = new THREE.Euler().setFromQuaternion(new THREE.Quaternion(rotationTrack.values[0], rotationTrack.values[1], rotationTrack.values[2], rotationTrack.values[3]), 'YXZ').y
+    const endYaw = new THREE.Euler().setFromQuaternion(new THREE.Quaternion(rotationTrack.values[lastQ], rotationTrack.values[lastQ + 1], rotationTrack.values[lastQ + 2], rotationTrack.values[lastQ + 3]), 'YXZ').y
+    rootRotationOffsets.set(clipName, endYaw - startYaw) //must match the clip's own turn exactly or the cut to the next clip will pop
+    // The turn itself is left in the clip (natural animation curve) and only committed to the model's persistent facing at clip boundaries, see commitRootRotation().
+  }
   return clip
+}
+
+function commitRootRotation(clipName) {
+  const rotationOffset = rootRotationOffsets.get(clipName)
+  if (mixamoModel && rotationOffset) mixamoModel.rotation.y += rotationOffset
 }
 
 function applyStepMotion(clipName, progressDelta) {
   const offset = rootMotionOffsets.get(clipName)
-  if (mixamoModel && offset) mixamoModel.position.addScaledVector(offset, progressDelta)
+  if (mixamoModel && offset) mixamoModel.position.addScaledVector(offset.clone().applyAxisAngle(upAxis, mixamoModel.rotation.y), progressDelta)
 }
 
 function setTime(value, pauseAction = true) {
@@ -293,6 +308,7 @@ function setupSequenceList() {
     selectedClip = combinations[index].clip
     sequencePlayback = null
     playWhenReady = true
+    mixamoModel.rotation.y = 0
     useAnimation(combinations[index].clip)
     isPlaying = true
     updatePlayButton()
@@ -368,6 +384,7 @@ function setupSequenceLibrary() { const addButton = document.querySelector('#add
 function startSequence(steps) {
   if (!steps.length || !mixamoActions.has(steps[0].clip)) return
   sequencePlayback = { steps: steps.map((step) => ({ ...step })), index: 0, transitioned: false, nextAction: null, stepProgress: 0, blend: null }
+  mixamoModel.rotation.y = 0
   useAnimation(sequencePlayback.steps[0].clip)
   mixamoAction.paused = false
   isPlaying = true
@@ -395,6 +412,7 @@ function render(timestamp = performance.now()) {
     if (elapsed >= duration && !sequencePlayback) {
       if (loop) {
         elapsed = 0
+        commitRootRotation(selectedClip)
         if (mixamoAction) {
           mixamoAction.reset()
           mixamoAction.time = activeTrimStart
@@ -428,6 +446,7 @@ function render(timestamp = performance.now()) {
         sequencePlayback.transitioned = true
       }
       if (mixamoAction.time >= activeTrimEnd) {
+        commitRootRotation(currentStep.clip)
         sequencePlayback.index += 1
         if (sequencePlayback.blend) {
           sequencePlayback.blend.from.enabled = false
