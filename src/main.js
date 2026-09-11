@@ -128,7 +128,7 @@ function prepareAnimationClip(clip, clipName) {
       rootTrack.values[last] - rootTrack.values[0],
       rootTrack.values[last + 1] - rootTrack.values[1],
       rootTrack.values[last + 2] - rootTrack.values[2],
-    ).multiply(mixamoModel.scale))
+    ).multiply(mixamoModel.scale).multiplyScalar(1.5)) //movment speed (footwork)
     clip.tracks = clip.tracks.filter((track) => track !== rootTrack)
   }
   return clip
