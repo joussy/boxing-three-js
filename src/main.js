@@ -4,19 +4,20 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import GIF from 'gif.js'
 
-const characterUrl = '/assets/boxing/character.fbx'
+const boxingAssetUrl = (fileName) => `${import.meta.env.BASE_URL}assets/boxing/${fileName}`
+const characterUrl = boxingAssetUrl('character.fbx')
 const animationUrls = {
-  jab: '/assets/boxing/jab.fbx',
-  cross: '/assets/boxing/cross.fbx',
-  jabCross: '/assets/boxing/jab_cross.fbx',
-  leftHook: '/assets/boxing/left_hook.fbx',
-  rightHook: '/assets/boxing/right_hook.fbx',
-  leftUppercut: '/assets/boxing/lead_uppercut.fbx',
-  rightUppercut: '/assets/boxing/rear_uppercut.fbx',
-  leftPivot: '/assets/boxing/left_pivot.fbx',
-  rightPivot: '/assets/boxing/right_pivot.fbx',
-  stepForward: '/assets/boxing/short_step_forward.fbx',
-  stepBackward: '/assets/boxing/short_step_backward.fbx',
+  jab: boxingAssetUrl('jab.fbx'),
+  cross: boxingAssetUrl('cross.fbx'),
+  jabCross: boxingAssetUrl('jab_cross.fbx'),
+  leftHook: boxingAssetUrl('left_hook.fbx'),
+  rightHook: boxingAssetUrl('right_hook.fbx'),
+  leftUppercut: boxingAssetUrl('lead_uppercut.fbx'),
+  rightUppercut: boxingAssetUrl('rear_uppercut.fbx'),
+  leftPivot: boxingAssetUrl('left_pivot.fbx'),
+  rightPivot: boxingAssetUrl('right_pivot.fbx'),
+  stepForward: boxingAssetUrl('short_step_forward.fbx'),
+  stepBackward: boxingAssetUrl('short_step_backward.fbx'),
 }
 
 const combinations = [
@@ -34,7 +35,7 @@ const combinations = [
 
 document.querySelector('#app').innerHTML = `
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Round One home"><span class="brand-mark">R1</span><span>ROUND ONE</span></a>
+    <a class="brand" href="${import.meta.env.BASE_URL}" aria-label="Round One home"><span class="brand-mark">R1</span><span>ROUND ONE</span></a>
     <div class="session"><span class="live-dot"></span><span>COACHING SESSION</span><span class="session-rule"></span><span>ORTHODOX</span></div>
     <button class="icon-button" id="resetCamera" aria-label="Reset camera">↺</button>
   </header>
