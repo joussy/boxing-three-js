@@ -266,6 +266,7 @@ fbxLoader.load(characterUrl, (model) => {
   }))).then(() => {
     useAnimation(selectedClip)
     followedPosition = mixamoModel.position.clone()
+    document.documentElement.dataset.sceneReady = 'true'
     if (playWhenReady) {
       isPlaying = true
       updatePlayButton()
@@ -586,5 +587,28 @@ function resize() {
 window.addEventListener('resize', resize)
 resize()
 setTime(0)
+window.__roundOneCapture = {
+  start(steps) {
+    speed = 1
+    loop = false
+    startSequence(steps)
+  },
+  durationFor(steps) {
+    const durations = steps.map((step) => {
+      const trim = getTrimSeconds(step.clip)
+      return Math.max(trim.end - trim.start, 0.01)
+    })
+    return durations.reduce((total, currentDuration, index) => {
+      if (index === 0) return currentDuration
+      const previousDuration = durations[index - 1]
+      const overlap = Math.min(Math.max(0, Number(steps[index - 1].overlap) || 0), previousDuration * 0.35, currentDuration * 0.35)
+      return total + currentDuration - overlap
+    }, 0)
+  },
+  advance(seconds) {
+    render(previousFrame + seconds * 1000)
+    return isPlaying
+  },
+}
 render()
 

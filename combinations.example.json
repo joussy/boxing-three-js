@@ -1,0 +1,18 @@
+{
+  "combinations": [
+    {
+      "name": "jab-cross",
+      "steps": [
+        { "clip": "jab", "overlap": 0 },
+        { "clip": "cross", "overlap": 0.15 }
+      ]
+    },
+    {
+      "name": "angle-out",
+      "steps": [
+        { "clip": "jabCross", "overlap": 0 },
+        { "clip": "leftPivot", "overlap": 0.2 }
+      ]
+    }
+  ]
+}

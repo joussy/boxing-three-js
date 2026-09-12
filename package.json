@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "export:webp": "node scripts/export-webp.js"
   },
   "devDependencies": {
+    "playwright": "^1.63.0",
     "vite": "^8.3.0"
   },
   "dependencies": {
